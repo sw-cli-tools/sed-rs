@@ -1,0 +1,14 @@
+[package]
+name = "sed-rs"
+version = "0.1.0"
+edition = "2024"
+description = "A portable subset of sed for consistent behavior across platforms"
+license = "MIT"
+
+[dependencies]
+regex = "1"
+clap = { version = "4", features = ["derive"] }
+
+[build-dependencies]
+hostname = "0.4"
+chrono = "0.4"
