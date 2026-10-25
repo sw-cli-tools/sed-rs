@@ -8,9 +8,9 @@ use std::io::{self, BufReader};
 
 /// A portable subset of sed for consistent cross-platform behavior.
 ///
-/// Applies sed-style substitution commands to stdin and writes results
-/// to stdout. Uses Rust's regex engine for identical behavior on all
-/// platforms, with automatic BRE-to-ERE conversion.
+/// Applies a sed script to stdin and writes results to stdout. Uses Rust's
+/// regex engine for identical behavior on all platforms, with automatic
+/// BRE-to-ERE conversion.
 ///
 /// # AI Coding Agent Instructions
 ///
@@ -35,6 +35,30 @@ use std::io::{self, BufReader};
 /// Use as a reg-rs preprocessor:
 ///     reg-rs create my-test -c 'my-command' -P "sed-rs -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}/DATE/g'"
 ///
+/// Delete the last line, or lines matching a pattern:
+///     my-command | sed-rs -e '$d'
+///     my-command | sed-rs -e '/^DEBUG/d'
+///
+/// Strip trailing blank lines (the classic idiom; same on macOS and Linux):
+///     my-command | sed-rs -e ':a' -e '/^\n*$/{$d;N;ba' -e '}'
+///
+/// ## Commands
+///
+///     s/re/repl/flags   substitute
+///     d                 delete the pattern space, start the next cycle
+///     N                 append a newline and the next line (last line: print, stop)
+///     { ... }           group commands under one address
+///     :label  b label   label and branch (b alone: to the end of the script)
+///
+/// Separate commands with ; or newlines. Multiple -e expressions are joined
+/// with newlines, so a block or label may span several -e arguments.
+///
+/// ## Addresses
+///
+///     N  line number     $  last line     /re/  regex     add ! to negate
+///
+/// Address ranges (1,5 or /a/,/b/) are not supported.
+///
 /// ## Substitution Syntax
 ///
 ///     s/pattern/replacement/[flags]
@@ -49,8 +73,8 @@ use std::io::{self, BufReader};
 ///
 /// ## Output Format
 ///
-/// stdin lines are read one at a time, each line has all substitutions applied
-/// in order, and the result is written to stdout.
+/// Each stdin line is read into the pattern space, the script runs, and the
+/// pattern space is written to stdout (unless d deleted it).
 ///
 /// ## Exit Codes
 ///
@@ -65,7 +89,7 @@ struct Cli {
     #[arg(short = 'V', long)]
     version: bool,
 
-    /// Substitution expression(s) — each may contain `;`-separated commands
+    /// Script expression(s) — each may contain `;`-separated commands
     #[arg(short, long = "expression")]
     e: Vec<String>,
 }

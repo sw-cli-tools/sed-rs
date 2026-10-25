@@ -35,7 +35,9 @@ Returns `Result<Sed, ParseError>`. A `ParseError` is returned if any expression 
 
 ### `Sed::apply`
 
-Apply all substitution commands to a single string and return the result.
+Run the script on a single line and return what it prints, without the
+trailing newline. For substitution-only scripts this is the substituted line;
+if the script deletes the line (`d`), the result is an empty string.
 
 ```rust
 let sed = Sed::parse(&["s/[0-9]+/NUM/g"]).unwrap();
@@ -95,6 +97,15 @@ fn preprocess_output(sed_expr: &str, output: &[u8]) -> Result<Vec<u8>, Box<dyn s
 | Whole match | `s/foo/[&]/` | `&` expands to the entire match |
 | BRE escapes | `s/[0-9]\{4\}/YYYY/` | Auto-converted to ERE equivalents |
 | Escape sequences | `s/a/b\n/` | `\n` (newline), `\t` (tab) in replacements |
+| Addresses | `2d`, `$d`, `/re/d`, `/re/!d` | Line number, last line, regex; `!` negates (no ranges) |
+| Delete | `d` | Delete the pattern space, start the next cycle |
+| Next line | `N` | Append the next line to the pattern space |
+| Blocks | `/re/{ s/a/b/; s/c/d/ }` | Group commands under one address |
+| Labels, branches | `:a` ... `ba` | Loops such as stripping trailing blank lines |
+
+See [cli-usage.md](cli-usage.md) for the exact semantics. Multi-line commands
+(`N`, `b`) see the whole input through `process`; `apply` runs the script on
+one line.
 
 ## Error Handling
 
@@ -110,4 +121,4 @@ fn try_parse(expr: &str) -> Result<Sed, Box<dyn std::error::Error>> {
 
 ## Thread Safety
 
-`Sed` is `Clone + Send + Sync` — parse once, share across threads.
+`Sed` is `Clone + Send + Sync` -- parse once, share across threads.
