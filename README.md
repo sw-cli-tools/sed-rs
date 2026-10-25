@@ -28,7 +28,11 @@ as a Rust library.
   negate.
 - **Regexes:** Rust [regex](https://docs.rs/regex/latest/regex/#syntax)
   syntax. BRE escapes such as `\(`, `\)` and `\{n\}` are converted
-  automatically, so both `[0-9]\{4\}` and `[0-9]{4}` work.
+  automatically, so both `[0-9]\{4\}` and `[0-9]{4}` work. An operator with
+  nothing to repeat (`s/?$//`) or a `{` that is not an interval is literal,
+  as in POSIX BRE.
+- **Operands:** without `-e` the first operand is the script; the rest are
+  input files (`-` is stdin), as in POSIX sed.
 - **Scripts:** commands are separated by `;` or newlines, and several `-e`
   expressions join into one script, so a block or label may span them.
 - **Not supported:** address ranges (`1,5`, `/a/,/b/`), in-place editing,

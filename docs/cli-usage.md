@@ -11,16 +11,21 @@ cargo install --path .
 ## Synopsis
 
 ```
-sed-rs -e <expression> [-e <expression> ...]
+sed-rs -e <expression> [-e <expression> ...] [file ...]
+sed-rs <script> [file ...]
 ```
 
-Reads from stdin, writes to stdout. Designed to be a drop-in replacement for `sed` in pipeline/preprocessing contexts.
+Without `-e`, the first operand is the script, as in POSIX sed. The other
+operands are input files, read in order as one stream (line numbers continue
+and `$` is the last line of the last file); `-` or no files means stdin. Every
+file is opened before any output, so a missing file exits 1 with nothing
+written. Writes to stdout. Designed to be a drop-in replacement for `sed` in pipeline/preprocessing contexts.
 
 ## Options
 
 | Flag | Description |
 |------|-------------|
-| `-e`, `--expression` | Script expression (required, repeatable) |
+| `-e`, `--expression` | Script expression (repeatable; without it the first operand is the script) |
 | `-h`, `--help` | Print help |
 | `-V`, `--version` | Print version |
 
@@ -98,6 +103,15 @@ Patterns use [Rust regex syntax](https://docs.rs/regex/latest/regex/#syntax) int
 | `\+` `\?` `\|` | `+` `?` `\|` |
 
 This means both BRE-style `[0-9]\{4\}` and ERE-style `[0-9]{4}` work.
+
+Where an unescaped `*`, `+`, `?` or `{` cannot be an operator, it is literal,
+as in POSIX BRE: at the start of the pattern or after `^`, `(` or `|`, and a
+`{` that does not open `{n}`, `{n,}` or `{n,m}`. So `s/?$//` and `s/{x}//`
+behave as in GNU and BSD sed, while `[0-9]+` still repeats.
+
+Unescaped `(` `)` and `|` are ERE operators here but literal in POSIX BRE.
+For a literal that every sed reads the same way, use a bracket: `[(]`, `[)]`,
+`[|]`, `[?]`.
 
 ## Examples
 

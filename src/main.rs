@@ -4,11 +4,13 @@ mod version;
 
 use clap::Parser;
 use sed_rs::Sed;
-use std::io::{self, BufReader};
+use std::fs::File;
+use std::io::{self, BufRead, BufReader};
 
 /// A portable subset of sed for consistent cross-platform behavior.
 ///
-/// Applies a sed script to stdin and writes results to stdout. Uses Rust's
+/// Applies a sed script to the input files (stdin if none, or `-`) and
+/// writes results to stdout. Uses Rust's
 /// regex engine for identical behavior on all platforms, with automatic
 /// BRE-to-ERE conversion.
 ///
@@ -41,6 +43,10 @@ use std::io::{self, BufReader};
 ///
 /// Strip trailing blank lines (the classic idiom; same on macOS and Linux):
 ///     my-command | sed-rs -e ':a' -e '/^\n*$/{$d;N;ba' -e '}'
+///
+/// The POSIX form without -e works too; the first operand is then the script:
+///     my-command | sed-rs 's/^/    /'
+///     sed-rs -e 's/a/b/' file1 file2
 ///
 /// ## Commands
 ///
@@ -92,6 +98,10 @@ struct Cli {
     /// Script expression(s) — each may contain `;`-separated commands
     #[arg(short, long = "expression")]
     e: Vec<String>,
+
+    /// Without -e, the script; then the input files (`-` is stdin)
+    #[arg(value_name = "SCRIPT|FILE")]
+    operands: Vec<String>,
 }
 
 fn main() {
@@ -102,12 +112,19 @@ fn main() {
         return;
     }
 
-    if cli.e.is_empty() {
-        eprintln!("sed-rs: no expressions provided (use -e)");
-        std::process::exit(1);
+    let mut exprs: Vec<&str> = cli.e.iter().map(|s| s.as_str()).collect();
+    let mut files = cli.operands.iter().map(|s| s.as_str());
+    if exprs.is_empty() {
+        match files.next() {
+            Some(script) => exprs.push(script),
+            None => {
+                eprintln!("sed-rs: no script provided (use -e or give it as the first operand)");
+                std::process::exit(1);
+            }
+        }
     }
+    let files: Vec<&str> = files.collect();
 
-    let exprs: Vec<&str> = cli.e.iter().map(|s| s.as_str()).collect();
     let sed = match Sed::parse(&exprs) {
         Ok(s) => s,
         Err(e) => {
@@ -116,9 +133,27 @@ fn main() {
         }
     };
 
-    let stdin = io::stdin().lock();
+    // Open every file before writing anything, so a bad path fails cleanly.
+    let mut inputs: Vec<Box<dyn BufRead>> = Vec::new();
+    if files.is_empty() {
+        inputs.push(Box::new(io::stdin().lock()));
+    }
+    for path in &files {
+        if *path == "-" {
+            inputs.push(Box::new(io::stdin().lock()));
+            continue;
+        }
+        match File::open(path) {
+            Ok(f) => inputs.push(Box::new(BufReader::new(f))),
+            Err(e) => {
+                eprintln!("sed-rs: can't read {path}: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     let stdout = io::stdout().lock();
-    if let Err(e) = sed.process(BufReader::new(stdin), stdout)
+    if let Err(e) = sed.process_all(inputs, stdout)
         && e.kind() != io::ErrorKind::BrokenPipe
     {
         eprintln!("sed-rs: {e}");

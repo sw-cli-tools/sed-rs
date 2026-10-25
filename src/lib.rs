@@ -184,6 +184,18 @@ impl Sed {
         self.run(reader.lines(), writer)
     }
 
+    /// Process several readers as one input stream, as sed does with several
+    /// file operands: line numbers continue across them and `$` is the last
+    /// line of the last reader.
+    pub fn process_all<R, I, W>(&self, readers: I, writer: W) -> io::Result<()>
+    where
+        R: BufRead,
+        I: IntoIterator<Item = R>,
+        W: Write,
+    {
+        self.run(readers.into_iter().flat_map(|r| r.lines()), writer)
+    }
+
     /// The sed cycle: read a line into the pattern space, run the script,
     /// print the pattern space (unless `d` ran), repeat.
     fn run<I, W>(&self, lines: I, mut writer: W) -> io::Result<()>
@@ -373,11 +385,29 @@ fn parse_subst(chars: &mut Chars<'_>) -> Result<SubstCmd, ParseError> {
 }
 
 /// Convert common BRE escapes to ERE: \{n\} → {n}, \( \) → ( ), \+ → +
+///
+/// Unescaped `+ ? { |` keep their ERE meaning (so `[0-9]+` works), except
+/// where they cannot be an operator: a `* + ?` or `{` with nothing before it
+/// to repeat (start of the pattern, after `^`, `(` or `|`), and a `{` that
+/// does not open a valid interval, are literal, as in POSIX BRE. So the
+/// portable `s/?$//` and `s/{x}//` mean the same as in GNU and BSD sed.
 fn bre_to_ere(pattern: &str) -> String {
     let mut result = String::with_capacity(pattern.len());
     let mut chars = pattern.chars().peekable();
 
     while let Some(c) = chars.next() {
+        let nothing_to_repeat = result.is_empty()
+            || result == "^"
+            || (result.ends_with(['(', '|'])
+                && !result.ends_with("\\(")
+                && !result.ends_with("\\|"));
+        if matches!(c, '*' | '+' | '?' | '{') && nothing_to_repeat
+            || c == '{' && !opens_interval(chars.clone())
+        {
+            result.push('\\');
+            result.push(c);
+            continue;
+        }
         if c == '\\' {
             match chars.peek() {
                 Some(&'{') => {
@@ -431,6 +461,22 @@ fn bre_to_ere(pattern: &str) -> String {
         }
     }
     result
+}
+
+/// Whether the text after a `{` is a valid interval body: `n}`, `n,}` or
+/// `n,m}`.
+fn opens_interval(mut rest: impl Iterator<Item = char>) -> bool {
+    let mut digits = 0;
+    let mut comma = false;
+    for ch in rest.by_ref() {
+        match ch {
+            '0'..='9' => digits += 1,
+            ',' if !comma && digits > 0 => comma = true,
+            '}' => return digits > 0,
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// Convert sed replacement syntax to regex crate syntax.
@@ -691,5 +737,36 @@ mod tests {
         );
         assert_eq!(parse_err(&[":"]), "\":\" lacks a label");
         assert_eq!(parse_err(&["/x"]), "unterminated address regex");
+    }
+
+    #[test]
+    fn operator_with_nothing_to_repeat_is_literal() {
+        // POSIX BRE: these are literal where they cannot repeat anything.
+        assert_eq!(apply("s/?$//", "word?"), "word");
+        assert_eq!(apply("s/*x/y/", "a*x"), "ay");
+        assert_eq!(apply("s/^+//", "+1"), "1");
+        assert_eq!(apply("s/a\\(?\\)b/X/", "a?b"), "X");
+        assert_eq!(apply("s/x|?/Y/", "?"), "Y");
+        // ... but they stay operators after something repeatable.
+        assert_eq!(apply("s/pid=[0-9]+/PID/", "pid=42"), "PID");
+        assert_eq!(apply("s/ab?c/X/", "ac"), "X");
+    }
+
+    #[test]
+    fn brace_that_is_not_an_interval_is_literal() {
+        assert_eq!(apply("s/{b}/Z/", "a{b}"), "aZ");
+        assert_eq!(apply("s/a{,}/Z/", "a{,}"), "Z");
+        assert_eq!(apply("s/x{2}/Z/", "xx"), "Z");
+        assert_eq!(apply("s/x{1,}/Z/", "xxx"), "Z");
+        assert_eq!(apply("s/x{1,2}/Z/", "xxx"), "Zx");
+    }
+
+    #[test]
+    fn process_all_joins_readers_into_one_stream() {
+        let sed = Sed::parse(&["2s/^/two:/; $s/$/:last/"]).unwrap();
+        let mut out = Vec::new();
+        sed.process_all([&b"a\n"[..], &b"b\nc\n"[..]], &mut out)
+            .unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "a\ntwo:b\nc:last\n");
     }
 }
