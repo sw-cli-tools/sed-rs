@@ -4,6 +4,7 @@ version = "0.2.0"
 edition = "2024"
 description = "A portable subset of sed for consistent behavior across platforms"
 license = "MIT"
+repository = "https://github.com/sw-cli-tools/sed-rs"
 
 [dependencies]
 regex = "1"

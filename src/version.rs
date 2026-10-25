@@ -1,6 +1,6 @@
 //! Version information.
 
-const REPOSITORY: &str = "https://github.com/softwarewrighter/sw-cli-tools";
+const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 const LICENSE: &str = "MIT";
 const COPYRIGHT: &str = "Copyright (c) 2026 Michael A Wright";
 
