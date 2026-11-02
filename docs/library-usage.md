@@ -64,6 +64,59 @@ assert_eq!(
 );
 ```
 
+`process` prints every line with `\n`: a `\r\n` ending becomes `\n`, and a
+last line without a newline gets one. This has not changed since v0.1.
+
+### `Sed::parse_with` and `Options` (0.3)
+
+```rust
+use sed_rs::{Options, Sed};
+
+// Every `s` literal, as with the CLI's --fixed-strings.
+let sed = Sed::parse_with(&["s/a.b(c)/x/"], &Options::new().fixed_strings(true)).unwrap();
+assert_eq!(sed.apply("a.b(c) abbc"), "x abbc");
+```
+
+`Options` is `#[non_exhaustive]`, so build it with `Options::new()` and its
+setters. More options can then be added without breaking callers.
+
+### `Sed::process_with_stats` (0.3)
+
+The same as `process`, but it also returns how many replacements each `s`
+command made:
+
+```rust
+let sed = Sed::parse(&["s/a/b/g", "s/zz/y/"]).unwrap();
+let mut out = Vec::new();
+let stats = sed.process_with_stats(&b"aa\n"[..], &mut out).unwrap();
+assert_eq!(stats.total_replacements(), 2);
+let unmatched: Vec<_> = stats.unmatched().map(|s| s.source.as_str()).collect();
+assert_eq!(unmatched, ["s/zz/y/"]);
+```
+
+`Stats::substitutions` holds a `SubstStats` for each `s` command, in script
+order, with three fields:
+- `expression`: the `-e` index, counting from 1;
+- `source`: the command as written;
+- `replacements`: how many replacements it made.
+
+`Stats::accumulate` adds up runs over several inputs.
+
+### `Sed::process_preserving` (0.3)
+
+This is what `-i` uses. It is like `process_with_stats`, but the bytes come
+out as they went in:
+- each line keeps its ending (`\n`, `\r\n`, or none on a last line without
+  one);
+- a newline added by the script is written as `\r\n` in a CRLF line.
+
+```rust
+let sed = Sed::parse(&["s/a/x/"]).unwrap();
+let mut out = Vec::new();
+sed.process_preserving(&b"a\r\nb"[..], &mut out).unwrap();
+assert_eq!(out, b"x\r\nb");
+```
+
 ## Integration with reg-rs
 
 Instead of shelling out to `sed` for preprocessing, `reg-rs` can use the library directly:
@@ -92,12 +145,14 @@ fn preprocess_output(sed_expr: &str, output: &[u8]) -> Result<Vec<u8>, Box<dyn s
 | Basic substitution | `s/foo/bar/` | Replace first match |
 | Global flag | `s/foo/bar/g` | Replace all matches |
 | Case-insensitive | `s/foo/bar/gi` | Case-insensitive matching |
+| Literal | `s/a.b(c)/x/L` | Pattern and replacement are plain text |
 | Custom delimiters | `s\|/path\|<P>\|g` | Any character as delimiter |
 | Back-references | `s/(\w+) (\w+)/\2 \1/` | Capture group references in replacement |
 | Whole match | `s/foo/[&]/` | `&` expands to the entire match |
 | BRE escapes | `s/[0-9]\{4\}/YYYY/` | Auto-converted to ERE equivalents |
 | Escape sequences | `s/a/b\n/` | `\n` (newline), `\t` (tab) in replacements |
-| Addresses | `2d`, `$d`, `/re/d`, `/re/!d` | Line number, last line, regex; `!` negates (no ranges) |
+| Addresses | `2d`, `$d`, `/re/d`, `/re/!d` | Line number, last line, regex; `!` negates |
+| Ranges | `2,5d`, `/a/,/b/d`, `0,/re/s/x/y/` | From one address to another; `0,/re/` for the first match only |
 | Delete | `d` | Delete the pattern space, start the next cycle |
 | Next line | `N` | Append the next line to the pattern space |
 | Blocks | `/re/{ s/a/b/; s/c/d/ }` | Group commands under one address |

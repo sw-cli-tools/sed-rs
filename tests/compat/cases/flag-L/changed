@@ -1,0 +1,1 @@
+CHANGELOG 0.3.0 "Behaviour changes": `L` makes `s` literal (it was silently ignored).

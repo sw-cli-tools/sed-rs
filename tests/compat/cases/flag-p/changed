@@ -1,0 +1,1 @@
+CHANGELOG 0.3.0 "Behaviour changes": unknown `s` flags are an error (p was silently ignored).

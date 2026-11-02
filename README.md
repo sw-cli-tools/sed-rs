@@ -22,22 +22,26 @@ as a Rust library.
 
 ## Summary
 
-- **Commands:** `s/re/repl/flags` (flags `g`, `i`), `d`, `N`, `{ }`,
-  `:label` and `b`.
+- **Commands:** `s/re/repl/flags` (flags `g`, `i`, and `L` for literal text),
+  `d`, `N`, `{ }`, `:label` and `b`.
 - **Addresses:** a line number, `$` (the last line) or `/re/`, with `!` to
-  negate.
+  negate; ranges `A,B`, and `0,/re/` for the first match only.
 - **Regexes:** Rust [regex](https://docs.rs/regex/latest/regex/#syntax)
   syntax. BRE escapes such as `\(`, `\)` and `\{n\}` are converted
   automatically, so both `[0-9]\{4\}` and `[0-9]{4}` work.
 - **Scripts:** commands are separated by `;` or newlines, and several `-e`
   expressions join into one script, so a block or label may span them.
-- **Not supported:** address ranges (`1,5`, `/a/,/b/`), in-place editing,
-  and other commands (`p`, `y`, `a`/`i`/`c`, the hold space, ...).
+- **Editing files:** `-i[SUFFIX]` edits in place safely (all files or none,
+  line endings kept); `--strict` and `--expect=N` fail an edit that matched
+  nothing or the wrong number of times; `-F`/`--fixed-strings` makes every
+  `s` literal; `--diff` shows the change, or previews it without `-i`.
+- **Not supported:** other commands (`p`, `y`, `a`/`i`/`c`, the hold space, ...).
 
 ```bash
 my-command | sed-rs -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}/DATE/g'   # normalize dates
 my-command | sed-rs -e '/^DEBUG/d'                              # drop lines
 my-command | sed-rs -e ':a' -e '/^\n*$/{$d;N;ba' -e '}'         # strip trailing blank lines
+sed-rs -i.orig --strict -e 's/old/new/' file.rs                 # checked in-place edit
 ```
 
 ## Build
@@ -46,7 +50,7 @@ Requires [Rust](https://rustup.rs) (stable, via rustup).
 
 ```bash
 cargo build --release          # target/release/sed-rs
-cargo test                     # unit tests
+cargo test                     # unit, CLI, golden and differential tests
 cargo install --path .         # install sed-rs on your PATH
 sed-rs --help                  # usage, commands and examples
 ```
@@ -57,6 +61,9 @@ sed-rs --help                  # usage, commands and examples
   syntax and examples.
 - [Library usage](docs/library-usage.md): the `sed_rs` crate API
   (`Sed::parse`, `apply`, `process`).
+- [Compatibility](docs/compatibility.md): what stays the same between
+  releases, and how it is tested.
+- [CHANGELOG](CHANGELOG.md).
 
 ## Copyright
 
